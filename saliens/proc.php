@@ -145,8 +145,10 @@
                 ]);
             }
 //          Clean up the old build.
-            $this -> log($this -> StringTemplate -> UpdateCleanup);
-            system("{$this -> Script -> clean} {$this -> Script -> install}");
+            if (file_exists($this -> Script -> install)) {
+                $this -> log($this -> StringTemplate -> UpdateCleanup);
+                system("{$this -> Script -> clean} {$this -> Script -> install}");
+            }
 //          Download the latest build.
             $this -> log($this -> StringTemplate -> UpdateDownload);
             $curl = curl_init($this -> Script -> url);
