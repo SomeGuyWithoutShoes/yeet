@@ -33,14 +33,14 @@
             "UpdateDownload" => "Downloading the latest build.". PHP_EOL,
             "UpdateUnzip" => "Unpacking the latest build.". PHP_EOL,
             "UpdateFinish" => "Update complete; Resuming.". PHP_EOL,
-            "InstanceExists" => "[{token}] Instance already exists, skipping.". PHP_EOL,
-            "NewInstance" => "[{token}] Instance initialized.". PHP_EOL,
-            "StartInstance" => "[{token}] Starting up.". PHP_EOL,
-            "StopInstance" => "[{token}] Shut down.". PHP_EOL,
-            "StoppingInstance" => "[{token}] Shutting down.". PHP_EOL,
-            "InstanceLog" => "[{token}]\n{message}". PHP_EOL,
-            "InstanceDown" => "[{token}] Instance is down.". PHP_EOL,
-            "InstanceFailed" => "[{token}] ERROR: {error}". PHP_EOL,
+            "InstanceExists" => "Instance already exists, skipping.". PHP_EOL,
+            "NewInstance" => "Instance initialized.". PHP_EOL,
+            "StartInstance" => "Starting up.". PHP_EOL,
+            "StopInstance" => "Shut down.". PHP_EOL,
+            "StoppingInstance" => "Shutting down.". PHP_EOL,
+            "InstanceLog" => "{message}". PHP_EOL,
+            "InstanceDown" => "Instance is down.". PHP_EOL,
+            "InstanceFailed" => "ERROR: {error}". PHP_EOL,
             "Initialize" => "Initializing SalienCheat.". PHP_EOL,
             "Initialized" => "SalienCheat has been initialized (Status: {status}).". PHP_EOL,
             "Construct" => "SalienCheat construction ready.". PHP_EOL
@@ -63,10 +63,10 @@
                     
 //              Initialize first time run.
                 } else {
-                    $this -> log($this -> StringTemplate -> NoToken);
+                    $this -> log(0, $this -> StringTemplate -> NoToken);
                     
 //                  Ask the user for their main token.
-                    $this -> log("$ ");
+                    $this -> log(0, "$ ");
                     $token = stream_get_line(STDIN, 1024, PHP_EOL);
                     
 //                  Store the main token.
@@ -89,7 +89,7 @@
             });
             
 //          Process logic.
-            $this -> log($this -> StringTemplate -> Initialized, ['status' => 'OK!']);
+            $this -> log(0, $this -> StringTemplate -> Initialized, ['status' => 'OK!']);
             while (true) {
                 
 //              Check for updates.
@@ -104,7 +104,7 @@
                         if ($read && strlen($read) > 0) {
                             
 //                          Log the data.
-                            $this -> log($this -> StringTemplate -> InstanceLog, [
+                            $this -> log($token, $this -> StringTemplate -> InstanceLog, [
                                 'token' => substr($token,0,8),
                                 'message' => $read
                             ]);
@@ -115,7 +115,12 @@
         }
         
 //      Terminal logging.
-        public function log ($message, $arguments = []) {
+        public $lastLogGroup = 0;
+        public $logGroups = [
+            '0' => 'Master',
+            '-1' => 'Debug'
+        ];
+        public function log ($token, $message, $arguments = []) {
             
 //          Compose template.
             $template = [[],[]];
@@ -124,8 +129,21 @@
                 $template[1][] = $value;
             }
             
+//          Log grouping.
+            if ($this -> lastLogGroup == $token) {
+                $output = "";
+            } else {
+                $output = "+ ";
+                if (isset($this -> logGroups -> $token)) {
+                    $output .= $this -> logGroups -> $token;
+                } else {
+                    $output .= "Instance ". substr($token, 0, 8);
+                }
+                $output .= "\r\n";
+                $this -> lastLogGroup = $token;
+            }
 //          Replace matches.
-            $output = "[". date("H:i:s") ."] ". str_replace($template[0], $template[1], $message, $count);
+            $output .= str_replace($template[0], $template[1], $message, $count);
             
 //          Output.
             echo $output;
@@ -133,7 +151,7 @@
         
 //      Downloader.
         public function download ($url, $saveAs = "download") {
-            $this -> log($this -> StringTemplate -> UpdateDownload);
+            $this -> log(0, $this -> StringTemplate -> UpdateDownload);
             
             $error = "";
             $curl = curl_init($url);
@@ -151,7 +169,7 @@
         
 //      Unzipper.
         public function unzip($file, $target) {
-            $this -> log($this -> StringTemplate -> UpdateUnzip);
+            $this -> log(0, $this -> StringTemplate -> UpdateUnzip);
             
             $error = "";
             $build = new ZipArchive();
@@ -165,7 +183,7 @@
         
 //      Cleaner.
         public function clean($target) {
-            $this -> log($this -> StringTemplate -> UpdateCleanup);
+            $this -> log(0, $this -> StringTemplate -> UpdateCleanup);
             
             system("{$this -> Script -> clean} \"{$this -> Script -> install}\"");
         }
@@ -174,13 +192,9 @@
         public function createInstance ($token) {
             if (!isset($this -> Instances[$token])) {
                 $this -> Instances[$token] = 0;
-                $this -> log($this -> StringTemplate -> NewInstance, [
-                    'token' => substr($token,0,8)
-                ]);
+                $this -> log($token, $this -> StringTemplate -> NewInstance);
             } else {
-                $this -> log($this -> StringTemplate -> InstanceExists, [
-                    'token' => substr($token,0,8)
-                ]);
+                $this -> log($token, $this -> StringTemplate -> InstanceExists);
             }
         }
         
@@ -190,21 +204,17 @@
             if ($instance) {
                 
 //              Instance started.
-                $this -> log($this -> StringTemplate -> StartInstance, [
-                    'token' => substr($token, 0, 8)
-                ]);
+                $this -> log($token, $this -> StringTemplate -> StartInstance);
             } else {
                 
 //              Failed to start instance. Try collect error.
                 $error = trim(fread($instance, 4096));
                 if ($error) {
-                    $this -> log($this -> StringTemplate -> InstanceFailed, [
-                        'token' => substr($token, 0, 8),
+                    $this -> log($token, $this -> StringTemplate -> InstanceFailed, [
                         'error' => $error
                     ]);
                 } else {
-                    $this -> log($this -> StringTemplate -> InstanceFailed, [
-                        'token' => substr($token, 0, 8),
+                    $this -> log($token, $this -> StringTemplate -> InstanceFailed, [
                         'error' => 'No clue what went wrong.'
                     ]);
                 }
@@ -218,9 +228,7 @@
 //      Instance stopper.
         public function stopInstance ($token, &$instance) {
             if ($instance !== 0) {
-                $this -> log($this -> StringTemplate -> StopInstance, [
-                    'token' => substr($token, 0, 8)
-                ]);
+                $this -> log($token, $this -> StringTemplate -> StopInstance);
                 
                 pclose($instance);
                 $instance = 0;
@@ -240,7 +248,7 @@
                 if (time() - filemtime("download") > 3600 * 2) {
                     
 //                  Close down any running instances.
-                    $this -> log($this -> StringTemplate -> UpdateStart);
+                    $this -> log(0, $this -> StringTemplate -> UpdateStart);
                     $this -> forEach(function($token, &$instance) {
                         if ($instance !== 0)
                             $this -> stopInstance($token, $instance);
@@ -256,7 +264,7 @@
                     $this -> unzip("download", $this -> Script -> install);
                     
 //                  Finish and restart processes.
-                    $this -> log($this -> StringTemplate -> UpdateFinish);
+                    $this -> log(0, $this -> StringTemplate -> UpdateFinish);
                     $this -> forEach(function($token, &$instance) {
                         if ($instance === 0)
                             $this -> startInstance($token, $instance);
@@ -277,7 +285,7 @@
                 $this -> unzip("download", $this -> Script -> install);
                 
 //              Finish and restart processes.
-                $this -> log($this -> StringTemplate -> UpdateFinish);
+                $this -> log(0, $this -> StringTemplate -> UpdateFinish);
                 $this -> forEach(function($token, &$instance) {
                     if ($instance === 0)
                         $this -> startInstance($token, $instance);
@@ -295,10 +303,10 @@
                 $key = (object) $key;
             
 //          Construction done.
-            $this -> log($this -> StringTemplate -> Construct);
+            $this -> log(0, $this -> StringTemplate -> Construct);
             
 //          Initialize the process.
-            $this -> log($this -> StringTemplate -> Initialize);
+            $this -> log(0, $this -> StringTemplate -> Initialize);
             $this -> initialize();
         }
     }
