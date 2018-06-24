@@ -72,7 +72,7 @@
                         $read = fread($instance, 2096);
                         if ($read && strlen($read) > 0) {
                             $this -> log($this -> StringTemplate -> InstanceLog, [
-                                'token' => $token,
+                                'token' => substr($token,0,8),
                                 'message' => $read
                             ]);
                         }
@@ -86,11 +86,11 @@
             if (!isset($this -> Instances[$token])) {
                 $this -> Instances[$token] = 0;
                 $this -> log($this -> StringTemplate -> NewInstance, [
-                    'token' => $token
+                    'token' => substr($token,0,8)
                 ]);
             } else {
                 $this -> log($this -> StringTemplate -> InstanceExists, [
-                    'token' => $token
+                    'token' => substr($token,0,8)
                 ]);
             }
         }
@@ -99,19 +99,19 @@
             $instance = popen("{$this -> Script -> daemon} \"{$this -> Script -> install}/{$this -> Script -> run}\" $token", "r");
             if ($instance) {
                 $this -> log($this -> StringTemplate -> StartInstance, [
-                    'token' => $token
+                    'token' => substr($token,0,8)
                 ]);
             } else {
 //              Failed to start instance. Try collect error.
                 $error = fread($instance, 4096);
                 if ($error) {
                     $this -> log($this -> StringTemplate -> InstanceFailed, [
-                        'token' => $token,
+                        'token' => substr($token,0,8),
                         'error' => $error
                     ]);
                 } else {
                     $this -> log($this -> StringTemplate -> InstanceFailed, [
-                        'token' => $token,
+                        'token' => substr($token,0,8),
                         'error' => 'No clue what went wrong.'
                     ]);
                 }
@@ -134,11 +134,11 @@
                 pclose($instance);
                 $instance = 0;
                 $this -> log($this -> StringTemplate -> StopInstance, [
-                    'token' => $token
+                    'token' => substr($token,0,8)
                 ]);
             } else {
                 $this -> log($this -> StringTemplate -> InstanceDown, [
-                    'token' => $token
+                    'token' => substr($token,0,8)
                 ]);
             }
 //          Download the latest build.
@@ -202,13 +202,13 @@
             "UpdateDownload" => "Downloading the latest build.". PHP_EOL,
             "UpdateUnzip" => "Unpacking the latest build.". PHP_EOL,
             "UpdateFinish" => "Update complete; Resuming.". PHP_EOL,
-            "InstanceExists" => "Instance with token {token} already exists, skipping.". PHP_EOL,
-            "NewInstance" => "Initialized a new instance with token {token}.". PHP_EOL,
-            "StartInstance" => "Starting up instance by token {token}.". PHP_EOL,
-            "StopInstance" => "Shutting down instance by token {token}.". PHP_EOL,
+            "InstanceExists" => "[{token}] Instance already exists, skipping.". PHP_EOL,
+            "NewInstance" => "[{token}] Instance initialized.". PHP_EOL,
+            "StartInstance" => "[{token}] Starting up.". PHP_EOL,
+            "StopInstance" => "[{token}] Shutting down.". PHP_EOL,
             "InstanceLog" => "[{token}] {message}". PHP_EOL,
-            "InstanceDown" => "Instance by token {token} isn't up.". PHP_EOL,
-            "InstanceFailed" => "Couldn't start up instance by token {token}: {error}". PHP_EOL,
+            "InstanceDown" => "[{token}] Instance is down.". PHP_EOL,
+            "InstanceFailed" => "[{token}] ERROR: {error}". PHP_EOL,
             "Initialize" => "Initializing SalienCheat.". PHP_EOL,
             "Initialized" => "SalienCheat has been initialized (Status: {status}).". PHP_EOL,
             "Construct" => "SalienCheat construction ready.". PHP_EOL
