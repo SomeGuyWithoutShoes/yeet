@@ -14,10 +14,12 @@
 //      -   Where do we download SalienCheat?
             'url' => 'https://github.com/SteamDatabase/SalienCheat/archive/master.zip',
 //      -   What should run the process?
-            'daemon' => 'start /B php'
+            'daemon' => 'start /B php',
+//      -   What should be used to remove the old build?
+            'clean' => 'del /Q'
         ];
 //      Instance stack.
-        public $Instances = ['0' => 0];
+        public $Instances = ['0' => [0]];
 //      SalienCheat Initializer.
         public function initialize () {
 //          Get tokens for instances.
@@ -78,7 +80,8 @@
                         }
                     }
                 }
-                sleep(1);
+//              Turns out the usleep isn't actually even necessary. You can re-enable it if you need it.
+                //usleep(128 * 1000);
             }
         }
 //      Instance Object Creator.
@@ -141,6 +144,9 @@
                     'token' => substr($token,0,8)
                 ]);
             }
+//          Clean up the old build.
+            $this -> log($this -> StringTemplate -> UpdateCleanup);
+            system("{$this -> Script -> clean} {$this -> Script -> install}");
 //          Download the latest build.
             $this -> log($this -> StringTemplate -> UpdateDownload);
             $curl = curl_init($this -> Script -> url);
@@ -198,6 +204,7 @@
         public $StringTemplate = [
             "NoToken" => "You don't seem to have any tokens. Let's get you set up with some!\r\nVisit ( https://steamcommunity.com/saliengame/gettoken ) and copy your token from there, to here.". PHP_EOL,
             "UpdateStart" => "Shutting down all instances for download of the latest build.". PHP_EOL,
+            "UpdateCleanup" => "Cleaning up the old build.". PHP_EOL,
             "UpdateFailed" => "Couldn't perform update. Trying again in {retry}.". PHP_EOL,
             "UpdateDownload" => "Downloading the latest build.". PHP_EOL,
             "UpdateUnzip" => "Unpacking the latest build.". PHP_EOL,
@@ -206,7 +213,7 @@
             "NewInstance" => "[{token}] Instance initialized.". PHP_EOL,
             "StartInstance" => "[{token}] Starting up.". PHP_EOL,
             "StopInstance" => "[{token}] Shutting down.". PHP_EOL,
-            "InstanceLog" => "[{token}] {message}". PHP_EOL,
+            "InstanceLog" => "[{token}]\n{message}". PHP_EOL,
             "InstanceDown" => "[{token}] Instance is down.". PHP_EOL,
             "InstanceFailed" => "[{token}] ERROR: {error}". PHP_EOL,
             "Initialize" => "Initializing SalienCheat.". PHP_EOL,
