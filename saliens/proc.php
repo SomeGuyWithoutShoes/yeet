@@ -69,7 +69,7 @@
                 foreach ($this -> Instances as $token => &$instance) {
                     if ($token != "0")
                     if ($instance !== 0) {
-                        $read = fread($instance, 2096);
+                        $read = trim(fread($instance, 2096));
                         if ($read && strlen($read) > 0) {
                             $this -> log($this -> StringTemplate -> InstanceLog, [
                                 'token' => substr($token,0,8),
@@ -103,7 +103,7 @@
                 ]);
             } else {
 //              Failed to start instance. Try collect error.
-                $error = fread($instance, 4096);
+                $error = trim(fread($instance, 4096));
                 if ($error) {
                     $this -> log($this -> StringTemplate -> InstanceFailed, [
                         'token' => substr($token,0,8),
