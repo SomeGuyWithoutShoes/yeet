@@ -46,9 +46,10 @@
             }
 //          Update SalienCheat, if necessary.
             $this -> update();
-//          Start up instances..
+//          Start up instances.
             foreach ($this -> Instances as $token => &$instance)
-            if ($token != "0") {
+            if ($token != "0")
+            if ($instance === 0) {
                 $this -> startInstance($token, $instance);
             }
 //          Instance logic.
@@ -95,34 +96,33 @@
         }
 //      Instance starter.
         public function startInstance ($token, &$instance) {
-            if ($instance !== 0) {
-                $instance = popen("{$this -> Script -> daemon} \"{$this -> Script -> install}/{$this -> Script -> run}\" $token", "r");
-                if ($instance) {
-                    $this -> log($this -> StringTemplate -> StartInstance, [
-                        'token' => $token
+            $instance = popen("{$this -> Script -> daemon} \"{$this -> Script -> install}/{$this -> Script -> run}\" $token", "r");
+            if ($instance) {
+                $this -> log($this -> StringTemplate -> StartInstance, [
+                    'token' => $token
+                ]);
+            } else {
+//              Failed to start instance. Try collect error.
+                $error = fread($instance, 4096);
+                if ($error) {
+                    $this -> log($this -> StringTemplate -> InstanceFailed, [
+                        'token' => $token,
+                        'error' => $error
                     ]);
                 } else {
-    //              Failed to start instance. Try collect error.
-                    $error = fread($instance, 4096);
-                    if ($error) {
-                        $this -> log($this -> StringTemplate -> InstanceFailed, [
-                            'token' => $token,
-                            'error' => $error
-                        ]);
-                    } else {
-                        $this -> log($this -> StringTemplate -> InstanceFailed, [
-                            'token' => $token,
-                            'error' => 'No clue what went wrong.'
-                        ]);
-                    }
-                    pclose($instance);
-                    $instance = 0;
+                    $this -> log($this -> StringTemplate -> InstanceFailed, [
+                        'token' => $token,
+                        'error' => 'No clue what went wrong.'
+                    ]);
                 }
+                pclose($instance);
+                $instance = 0;
             }
         }
 //      SalienCheat updater.
         public function update () {
 //          Check if update is necessary.
+            if (file_exists("download"))
             if (time() - filemtime("download") < 3600 * 2) {
                 return false;
             }
