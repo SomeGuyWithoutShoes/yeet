@@ -142,8 +142,8 @@
                     }
                 });
                 
-//              Let's get flushing.
-                flush();
+//              Add some usleep so we don't use 100% of CPU. [ Temporary fix, rewriting update ]
+                usleep(256 * 1000);
             }
         }
         
