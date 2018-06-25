@@ -9,16 +9,38 @@
         
 //      Script config.
         public $Script = [
-//      -   Where should SalienCheat be installed?
+            
+/*      -   Where should SalienCheat be installed?
+            Default:    [ src/SalienCheat ] */
             'install' => 'src/SalienCheat',
-//      -   What should the instances run?
+            
+/*      -   What should the instances run?
+            Default:[ SalienCheat-master/cheat.php ]*/
             'run' => 'SalienCheat-master/cheat.php',
-//      -   Where do we download SalienCheat?
+            
+/*      -   Where do we download SalienCheat?
+            Default:[ https://github.com/SteamDatabase/SalienCheat/archive/master.zip ] */
             'url' => 'https://github.com/SteamDatabase/SalienCheat/archive/master.zip',
-//      -   What should run the process?
-            'daemon' => 'start /B php',
-//      -   What should be used to remove the old build?
-            'clean' => 'del /Q'
+            
+/*      -   What should run the process?
+            Default:   [ start /B php ] for Windows, [ php ] for Unix */
+            'daemon' => 'php',
+            
+/*      -   What should be used to remove the old build?
+            Default:  [ del /Q ] for Windows, [ rm -r ] for Unix */
+            'clean' => 'rm -r',
+            
+/*      -   Should we check the download file's last modified date? See: [ localFrequency ]
+            Default:           [ true ] */
+            'updateFromLocal' => true,
+            
+/*      -   How often should the download file be checked?
+            Default:          [ H * MM * SS ] 2 hours */
+            'localFrequency' => 2 * 60 * 60,
+            
+/*      -   Should we update if STDOUT reads [ update available ] ?
+            Default:            [ true ] */
+            'updateFromSTDOUT' => true
         ];
         
 //      Instance stack.
@@ -103,15 +125,13 @@
                 }
             }
             
-//          Update SalienCheat, if necessary.
-            $this -> update();
+            if (!file_exists("download") || (file_exists("download") && time() - filemtime("download") > $this -> Script -> localFrequency))
+                $this -> update();
             
 //          Start up instances.
             $this -> forEach(function($token, &$instance) {
-                if (!is_resource($instance -> process)) {
+                if (!is_resource($instance -> process))
                     $this -> startInstance($token, $instance);
-                } else {
-                }
             });
             
 //          Process logic.
@@ -119,17 +139,17 @@
             while (true) {
                 
 //              Check for updates.
-                $this -> update();
+                if ($this -> Script -> updateFromLocal && (time() - filemtime("download") > $this -> Script -> localFrequency))
+                    $this -> update();
                 
 //              Instance data.
                 $this -> forEach(function($token, &$instance) {
                     if (is_resource($instance -> process)) {
                         
 //                      Check if there's anything to read.
-                        $stat = fstat($instance -> pipes[1]);
-                        if ($stat['size']) {
-//                          Trim the read.
-                            $read = trim(fgets($instance -> pipes[1], $stat['size']));
+                        if ($this -> getSize($instance)) {
+//                          Trim the read. [ Read 4096 so we don't run into other issues ]
+                            $read = trim(fgets($instance -> pipes[1], 4096));
                             if ($read) {
                                 
 //                              Log the data.
@@ -276,10 +296,9 @@
             } else {
                 
 //              Check if there's anything to read.
-                $stat = fstat($instance -> pipes[2]);
-                if ($stat['size']) {
+                if ($this -> getSize($instance)) {
 //                  Trim the read.
-                    $read = trim(fgets($instance -> pipes[2], $stat['size']));
+                    $read = trim(fgets($instance -> pipes[2], 4096));
                     if ($error) {
                         $this -> log($token, $this -> StringTemplate -> InstanceFailed, [
                             'error' => $error
@@ -322,30 +341,28 @@
             
 //          Check for existing build.
             if (file_exists("download")) {
-                if (time() - filemtime("download") > 3600 * 2) {
                     
-//                  Close down any running instances.
-                    $this -> log(0, $this -> StringTemplate -> UpdateStart);
-                    $this -> forEach(function($token, &$instance) {
-                        $this -> stopInstance($token, $instance);
-                    });
-                    
-//                  Clean up the old build.
-                    $this -> clean($this -> Script -> install);
-                    
-//                  Download latest build.
-                    $this -> download($this -> Script -> url);
-                    
-//                  Unpack latest build.
-                    $this -> unzip("download", $this -> Script -> install);
-                    
-//                  Finish and restart processes.
-                    $this -> log(0, $this -> StringTemplate -> UpdateFinish);
-                    $this -> forEach(function($token, &$instance) {
-                        if (!is_resource($instance -> process))
-                            $this -> startInstance($token, $instance);
-                    });
-                }
+//              Close down any running instances.
+                $this -> log(0, $this -> StringTemplate -> UpdateStart);
+                $this -> forEach(function($token, &$instance) {
+                    $this -> stopInstance($token, $instance);
+                });
+                
+//              Clean up the old build.
+                $this -> clean($this -> Script -> install);
+                
+//              Download latest build.
+                $this -> download($this -> Script -> url);
+                
+//              Unpack latest build.
+                $this -> unzip("download", $this -> Script -> install);
+                
+//              Finish and restart processes.
+                $this -> log(0, $this -> StringTemplate -> UpdateFinish);
+                $this -> forEach(function($token, &$instance) {
+                    if (!is_resource($instance -> process))
+                        $this -> startInstance($token, $instance);
+                });
                 
 //          No build file found.
             } else {
@@ -371,6 +388,11 @@
                         $this -> startInstance($token, $instance);
                 });
             }
+        }
+        
+//      STDOUT size getter.
+        public function getSize($instance) {
+            return fstat($instance -> pipes[1]) || stream_get_meta_data($instance -> pipes[1])['unread_bytes'];
         }
         
 //      SalienCheat Process constructor.
