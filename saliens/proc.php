@@ -24,11 +24,11 @@
             
 /*      -   What should run the process?
             Default:   [ start /B php ] for Windows, [ php ] for Unix */
-            'daemon' => 'php',
+            'daemon' => 'start /B php',
             
 /*      -   What should be used to remove the old build?
             Default:  [ del /Q ] for Windows, [ rm -r ] for Unix */
-            'clean' => 'rm -r',
+            'clean' => 'del /Q',
             
 /*      -   Should we check the download file's last modified date? See: [ localFrequency ]
             Default:           [ true ] */
@@ -38,9 +38,13 @@
             Default:          [ H * MM * SS ] 2 hours */
             'localFrequency' => 2 * 60 * 60,
             
-/*      -   Should we update if STDOUT reads [ update available ] ?
+/*      -   Should we update if STDOUT reads [ update available ] ? See: [ updateNotification ]
             Default:            [ true ] */
-            'updateFromSTDOUT' => true
+            'updateFromSTDOUT' => true,
+            
+/*      -   What should STDOUT be matched for ?
+            Default:               [ Script has been updated on GitHub ] */
+            'updateNotification' => "Script has been updated on GitHub",
         ];
         
 //      Instance stack.
@@ -125,7 +129,8 @@
                 }
             }
             
-            if (!file_exists("download") || (file_exists("download") && time() - filemtime("download") > $this -> Script -> localFrequency))
+//          Initial update check.
+            if ($this -> fileAge("download") > $this -> Script -> localFrequency)
                 $this -> update();
             
 //          Start up instances.
@@ -139,7 +144,7 @@
             while (true) {
                 
 //              Check for updates.
-                if ($this -> Script -> updateFromLocal && (time() - filemtime("download") > $this -> Script -> localFrequency))
+                if ($this -> Script -> updateFromLocal && $this -> fileAge("download") > $this -> Script -> localFrequency)
                     $this -> update();
                 
 //              Instance data.
@@ -154,9 +159,13 @@
                                 
 //                              Log the data.
                                 $this -> log($token, $this -> StringTemplate -> InstanceLog, [
-                                    'token' => substr($token,0,8),
                                     'message' => $read
                                 ]);
+                                
+//                              Check if STDOUT has update notification.
+                                if ($this -> Script -> updateFromSTDOUT)
+                                if (preg_match("/{$this -> Script -> updateNotification}/", $read))
+                                    $this -> update();
                             }
                         }
                     }
@@ -187,11 +196,13 @@
                 $output = "";
             } else {
                 $output = "+ ";
-                if (isset($this -> logGroups -> $token)) {
-                    $output .= $this -> logGroups -> $token;
+                $logGroups = $this -> logGroups;
+                $instances = $this -> Instances;
+                if (@isset($logGroups -> $token)) {
+                    $output .= $logGroups -> $token;
                 } else {
-                    $instance = $this -> Instances[$token];
-                    if ($instance -> name != "") {
+                    $instance = $instances[$token];
+                    if (@$instance -> name != "") {
                         $output .= $instance -> name;
                     } else {
                         $output .= "Instance ". substr($token, 0, 8);
@@ -393,6 +404,13 @@
 //      STDOUT size getter.
         public function getSize($instance) {
             return fstat($instance -> pipes[1]) || stream_get_meta_data($instance -> pipes[1])['unread_bytes'];
+        }
+        
+//      File age getter.
+        public function fileAge($file) {
+            return file_exists($file)
+                ? time() - filemtime($file)
+                : PHP_INT_MAX;
         }
         
 //      SalienCheat Process constructor.
