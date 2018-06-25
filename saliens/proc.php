@@ -152,7 +152,7 @@
                     if (is_resource($instance -> process)) {
                         
 //                      Check if there's anything to read.
-                        if ($this -> getSize($instance)) {
+                        if ($this -> getSize($instance, 1)) {
 //                          Trim the read. [ Read 4096 so we don't run into other issues ]
                             $read = trim(fgets($instance -> pipes[1], 4096));
                             if ($read) {
@@ -307,7 +307,7 @@
             } else {
                 
 //              Check if there's anything to read.
-                if ($this -> getSize($instance)) {
+                if ($this -> getSize($instance, 2)) {
 //                  Trim the read.
                     $read = trim(fgets($instance -> pipes[2], 4096));
                     if ($error) {
@@ -402,8 +402,14 @@
         }
         
 //      STDOUT size getter.
-        public function getSize($instance) {
-            return fstat($instance -> pipes[1]) || stream_get_meta_data($instance -> pipes[1])['unread_bytes'];
+        public function getSize($instance, $pipe) {
+//          Use fstat on WINNT.
+            if (PHP_OS == "WINNT") {
+                return fstat($instance -> pipes[$pipe])['size'];
+//          Return 1 on Unix; fstat seems to always return 0 for size.
+            } else {
+                return 1;
+            }
         }
         
 //      File age getter.
