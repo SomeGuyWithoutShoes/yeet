@@ -26,7 +26,12 @@
         
 //      String templates.
         public $StringTemplate = [
-            "NoToken" => "You don't seem to have any tokens. Let's get you set up with some!\r\nVisit ( https://steamcommunity.com/saliengame/gettoken ) and copy your token from there, to here.". PHP_EOL,
+            "NoToken" => "Hello! This seems to be your first run of proc.php.". PHP_EOL
+            .   "Please visit [ https://steamcommunity.com/saliengame/gettoken ] to get your token.". PHP_EOL
+            .   PHP_EOL ."If you'd prefer to have a name on your token, you can add one to it.". PHP_EOL
+            .   "To do so, add an extra \":NAME\" after the token, without the quotes.". PHP_EOL
+            .   "For example: [ IVN31FDV:My Instance Name ]". PHP_EOL
+            .   PHP_EOL . PHP_EOL,
             "UpdateStart" => "Shutting down all instances for download of the latest build.". PHP_EOL,
             "UpdateCleanup" => "Cleaning up the old build.". PHP_EOL,
             "UpdateFailed" => "Couldn't perform update. Trying again in {retry}.". PHP_EOL,
@@ -56,8 +61,18 @@
                 if (file_exists("token.txt")) {
                     $tokens = fopen("token.txt", "r");
                     while (($token = fgets($tokens, 2096)) !== false) {
-//                      Initialize instances for each token.
-                        $this -> createInstance($token);
+                        
+//                      Check if the token has a name.
+                        if (preg_match("/:/", $token)) {
+                            
+//                          Named token.
+                            $token = explode(":", $token);
+                            $this -> createInstance($token[0], $token[1]);
+                        } else {
+                            
+//                          Unnamed token.
+                            $this -> createInstance($token);
+                        }
                     }
                     fclose($tokens);
                     
@@ -74,8 +89,17 @@
                     fwrite($tokens, $token);
                     fclose($tokens);
                     
-//                  Initialize an instance with given token.
-                    $this -> createInstance($token);
+//                  Check if the token has a name.
+                    if (preg_match("/:/", $token)) {
+                        
+//                      Named token.
+                        $token = explode(":", $token);
+                        $this -> createInstance($token[0], $token[1]);
+                    } else {
+                        
+//                      Unnamed token.
+                        $this -> createInstance($token);
+                    }
                 }
             }
             
@@ -84,8 +108,10 @@
             
 //          Start up instances.
             $this -> forEach(function($token, &$instance) {
-                if ($instance === 0)
+                if (!is_resource($instance -> process)) {
                     $this -> startInstance($token, $instance);
+                } else {
+                }
             });
             
 //          Process logic.
@@ -97,11 +123,11 @@
                 
 //              Instance data.
                 $this -> forEach(function($token, &$instance) {
-                    if ($instance !== 0) {
+                    if (is_resource($instance -> process)) {
                         
 //                      Trim the read.
-                        $read = trim(fread($instance, 2096)); flush();
-                        if ($read && strlen($read) > 0) {
+                        $read = trim(fgets($instance -> pipes[1], 1024));
+                        if ($read) {
                             
 //                          Log the data.
                             $this -> log($token, $this -> StringTemplate -> InstanceLog, [
@@ -111,6 +137,9 @@
                         }
                     }
                 });
+                
+//              Let's get flushing.
+                flush();
             }
         }
         
@@ -137,7 +166,12 @@
                 if (isset($this -> logGroups -> $token)) {
                     $output .= $this -> logGroups -> $token;
                 } else {
-                    $output .= "Instance ". substr($token, 0, 8);
+                    $instance = $this -> Instances[$token];
+                    if ($instance -> name != "") {
+                        $output .= $instance -> name;
+                    } else {
+                        $output .= "Instance ". substr($token, 0, 8);
+                    }
                 }
                 $output .= "\r\n";
                 $this -> lastLogGroup = $token;
@@ -185,13 +219,19 @@
         public function clean($target) {
             $this -> log(0, $this -> StringTemplate -> UpdateCleanup);
             
-            system("{$this -> Script -> clean} \"{$this -> Script -> install}\"");
+            if (file_exists($this -> Script -> install))
+                system("{$this -> Script -> clean} \"{$this -> Script -> install}\"");
         }
         
 //      Instance Object Creator.
-        public function createInstance ($token) {
+        public function createInstance ($token, $name = "") {
             if (!isset($this -> Instances[$token])) {
-                $this -> Instances[$token] = 0;
+                $this -> Instances[$token] = (object) [
+                    'process' => 0,
+                    'pipes' => [],
+                    'descriptor' => [],
+                    'name' => $name
+                ];
                 $this -> log($token, $this -> StringTemplate -> NewInstance);
             } else {
                 $this -> log($token, $this -> StringTemplate -> InstanceExists);
@@ -200,15 +240,39 @@
         
 //      Instance starter.
         public function startInstance ($token, &$instance) {
-            $instance = popen("{$this -> Script -> daemon} \"{$this -> Script -> install}/{$this -> Script -> run}\" $token", "r");
-            if ($instance) {
+            $instance -> descriptors = [
+                
+//              STDIN
+                0 => array("pipe", "r"),
+                
+//              STDOUT
+                1 => array("pipe", "w"),
+                
+//              STDERR
+                2 => array("pipe", "a")
+            ];
+            
+//          Start instance.
+            $instance -> process = proc_open(
+                "{$this -> Script -> daemon} \"{$this -> Script -> install}/{$this -> Script -> run}\" $token",
+                $instance -> descriptors,
+                $instance -> pipes
+            );
+            
+//          Set non-blocking.
+            stream_set_blocking($instance -> pipes[1], false);
+            stream_set_blocking($instance -> pipes[2], false);
+            //$instance = popen("{$this -> Script -> daemon} \"{$this -> Script -> install}/{$this -> Script -> run}\" $token", "r");
+            
+//          Check status.
+            if (is_resource($instance -> process)) {
                 
 //              Instance started.
                 $this -> log($token, $this -> StringTemplate -> StartInstance);
             } else {
                 
 //              Failed to start instance. Try collect error.
-                $error = trim(fread($instance, 4096));
+                $error = trim(fread($instance -> pipes[2], 4096));
                 if ($error) {
                     $this -> log($token, $this -> StringTemplate -> InstanceFailed, [
                         'error' => $error
@@ -220,18 +284,21 @@
                 }
                 
 //              Close the instance.
-                pclose($instance);
-                $instance = 0;
+                proc_close($instance -> process);
             }
         }
         
 //      Instance stopper.
         public function stopInstance ($token, &$instance) {
-            if ($instance !== 0) {
+//          Check if instance is up.
+            if (is_resource($instance -> process)) {
                 $this -> log($token, $this -> StringTemplate -> StopInstance);
                 
-                pclose($instance);
-                $instance = 0;
+//              Close the instance.
+                fclose($instance -> pipes[0]);
+                fclose($instance -> pipes[1]);
+                fclose($instance -> pipes[2]);
+                proc_close($instance -> process);
             }
         }
         
@@ -244,14 +311,15 @@
         
 //      SalienCheat updater.
         public function update () {
+            
+//          Check for existing build.
             if (file_exists("download")) {
                 if (time() - filemtime("download") > 3600 * 2) {
                     
 //                  Close down any running instances.
                     $this -> log(0, $this -> StringTemplate -> UpdateStart);
                     $this -> forEach(function($token, &$instance) {
-                        if ($instance !== 0)
-                            $this -> stopInstance($token, $instance);
+                        $this -> stopInstance($token, $instance);
                     });
                     
 //                  Clean up the old build.
@@ -266,17 +334,21 @@
 //                  Finish and restart processes.
                     $this -> log(0, $this -> StringTemplate -> UpdateFinish);
                     $this -> forEach(function($token, &$instance) {
-                        if ($instance === 0)
+                        if (!is_resource($instance -> process))
                             $this -> startInstance($token, $instance);
                     });
                 }
+                
+//          No build file found.
             } else {
                 
 //              Close down any running instances.
                 $this -> forEach(function($token, &$instance) {
-                    if ($instance !== 0)
-                        $this -> stopInstance($token, $instance);
+                    $this -> stopInstance($token, $instance);
                 });
+                
+//              Clean up the old build.
+                $this -> clean($this -> Script -> install);
                 
 //              Download latest build.
                 $this -> download($this -> Script -> url);
@@ -287,7 +359,7 @@
 //              Finish and restart processes.
                 $this -> log(0, $this -> StringTemplate -> UpdateFinish);
                 $this -> forEach(function($token, &$instance) {
-                    if ($instance === 0)
+                    if (!is_resource($instance -> process))
                         $this -> startInstance($token, $instance);
                 });
             }
