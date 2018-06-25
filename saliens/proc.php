@@ -125,15 +125,19 @@
                 $this -> forEach(function($token, &$instance) {
                     if (is_resource($instance -> process)) {
                         
-//                      Trim the read.
-                        $read = trim(fgets($instance -> pipes[1], 1024));
-                        if ($read) {
-                            
-//                          Log the data.
-                            $this -> log($token, $this -> StringTemplate -> InstanceLog, [
-                                'token' => substr($token,0,8),
-                                'message' => $read
-                            ]);
+//                      Check if there's anything to read.
+                        $stat = fstat($instance -> pipes[1]);
+                        if ($stat['size']) {
+//                          Trim the read.
+                            $read = trim(fgets($instance -> pipes[1], $stat['size']));
+                            if ($read) {
+                                
+//                              Log the data.
+                                $this -> log($token, $this -> StringTemplate -> InstanceLog, [
+                                    'token' => substr($token,0,8),
+                                    'message' => $read
+                                ]);
+                            }
                         }
                     }
                 });
@@ -271,20 +275,24 @@
                 $this -> log($token, $this -> StringTemplate -> StartInstance);
             } else {
                 
-//              Failed to start instance. Try collect error.
-                $error = trim(fread($instance -> pipes[2], 4096));
-                if ($error) {
-                    $this -> log($token, $this -> StringTemplate -> InstanceFailed, [
-                        'error' => $error
-                    ]);
-                } else {
-                    $this -> log($token, $this -> StringTemplate -> InstanceFailed, [
-                        'error' => 'No clue what went wrong.'
-                    ]);
+//              Check if there's anything to read.
+                $stat = fstat($instance -> pipes[2]);
+                if ($stat['size']) {
+//                  Trim the read.
+                    $read = trim(fgets($instance -> pipes[2], $stat['size']));
+                    if ($error) {
+                        $this -> log($token, $this -> StringTemplate -> InstanceFailed, [
+                            'error' => $error
+                        ]);
+                    } else {
+                        $this -> log($token, $this -> StringTemplate -> InstanceFailed, [
+                            'error' => 'No clue what went wrong.'
+                        ]);
+                    }
                 }
                 
 //              Close the instance.
-                proc_close($instance -> process);
+                $this -> stopInstance($token, $instance);
             }
         }
         
