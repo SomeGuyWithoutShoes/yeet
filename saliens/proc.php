@@ -1,3 +1,4 @@
+#!/usr/bin/env php
 <?php
     set_time_limit(0);
     
@@ -23,8 +24,8 @@
             'url' => 'https://github.com/SteamDatabase/SalienCheat/archive/master.zip',
             
 /*      -   What should run the process?
-            Default:   [ start /B php ] for Windows, [ php ] for Unix */
-            'daemon' => 'start /B php',
+            Default:   [ start /B php\php.exe -f ] for Windows, [ php ] for Unix */
+            'daemon' => 'start /B php\php.exe -f',
             
 /*      -   What should be used to remove the old build?
             Default:  [ del /Q ] for Windows, [ rm -r ] for Unix */
@@ -297,7 +298,6 @@
 //          Set non-blocking.
             stream_set_blocking($instance -> pipes[1], false);
             stream_set_blocking($instance -> pipes[2], false);
-            //$instance = popen("{$this -> Script -> daemon} \"{$this -> Script -> install}/{$this -> Script -> run}\" $token", "r");
             
 //          Check status.
             if (is_resource($instance -> process)) {
