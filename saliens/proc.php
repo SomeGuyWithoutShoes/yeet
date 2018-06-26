@@ -24,8 +24,8 @@
             'url' => 'https://github.com/SteamDatabase/SalienCheat/archive/master.zip',
             
 /*      -   What should run the process?
-            Default:   [ start /B php\php.exe -f ] for Windows, [ php ] for Unix */
-            'daemon' => 'start /B php\php.exe -f',
+            Default:   [ start /B php\php.exe ] for Windows, [ php ] for Unix */
+            'daemon' => 'start /B php\php.exe',
             
 /*      -   What should be used to remove the old build?
             Default:  [ del /Q ] for Windows, [ rm -r ] for Unix */
@@ -296,6 +296,7 @@
             );
             
 //          Set non-blocking.
+            stream_set_blocking($instance -> pipes[0], false);
             stream_set_blocking($instance -> pipes[1], false);
             stream_set_blocking($instance -> pipes[2], false);
             
@@ -336,7 +337,7 @@
                 fclose($instance -> pipes[0]);
                 fclose($instance -> pipes[1]);
                 fclose($instance -> pipes[2]);
-                proc_close($instance -> process);
+                $this -> kill($instance);
             }
         }
         
@@ -403,9 +404,11 @@
         
 //      STDOUT size getter.
         public function getSize($instance, $pipe) {
+            
 //          Use fstat on WINNT.
             if (PHP_OS == "WINNT") {
                 return fstat($instance -> pipes[$pipe])['size'];
+                
 //          Return 1 on Unix; fstat seems to always return 0 for size.
             } else {
                 return 1;
@@ -417,6 +420,19 @@
             return file_exists($file)
                 ? time() - filemtime($file)
                 : PHP_INT_MAX;
+        }
+        
+//      Instance killer.
+        public function kill(&$instance) {
+            if (PHP_OS == "WINNT") {
+                proc_close($instance -> process);
+            } else {
+/*              Do note this leaves "ghost processes" running for a while after termination.
+                They'll eventually go away. But the only other option is long waits on the master process. */
+                proc_terminate($instance -> process, 9);
+            }
+            
+            $instance -> process = null;
         }
         
 //      SalienCheat Process constructor.
