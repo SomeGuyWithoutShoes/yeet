@@ -46,6 +46,14 @@
 /*      -   What should STDOUT be matched for ?
             Default:               [ Script has been updated on GitHub ] */
             'updateNotification' => "Script has been updated on GitHub",
+            
+/*      -   Should we wait for something in STDOUT before update ?
+            Default:         [ true ] */
+            'updateDelayed' => true,
+            
+/*      -   What should we wait for in STDOUT ?
+            Default:        [ Your Score ] */
+            'updateWaitFor' => "Your Score"
         ];
         
 //      Instance stack.
@@ -75,8 +83,13 @@
             "InstanceFailed" => "ERROR: {error}". PHP_EOL,
             "Initialize" => "Initializing SalienCheat.". PHP_EOL,
             "Initialized" => "SalienCheat has been initialized (Status: {status}).". PHP_EOL,
-            "Construct" => "SalienCheat construction ready.". PHP_EOL
+            "Construct" => "SalienCheat construction ready.". PHP_EOL,
+            "WaitingUpdate" => "Waiting for round to end to update ...". PHP_EOL,
+            "WaitComplete" => "We've done our time.". PHP_EOL
         ];
+        
+//      Update Pending flag.
+        public $UpdatePending = false;
         
 //      SalienCheat Initializer.
         public function initialize () {
@@ -165,8 +178,29 @@
                                 
 //                              Check if STDOUT has update notification.
                                 if ($this -> Script -> updateFromSTDOUT)
-                                if (preg_match("/{$this -> Script -> updateNotification}/", $read))
-                                    $this -> update();
+                                if (preg_match("/{$this -> Script -> updateNotification}/", $read)) {
+                                    if ($this -> Script -> updateDelayed) {
+                                        
+//                                      Flag for pending update.
+                                        if (!($this -> UpdatePending)) {
+                                            $this -> log(0, $this -> StringTemplate -> WaitingUpdate);
+                                            $this -> UpdatePending = true;
+                                        }
+                                    } else {
+                                        
+//                                      Immediate update.
+                                        $this -> update();
+                                    }
+                                }
+                                
+//                              Check if STDOUT has round end notification.
+                                if ($this -> Script -> updateDelayed)
+                                if (preg_match("/{$this -> Script -> updateWaitFor}/", $read)) {
+                                    if ($this -> UpdatePending) {
+                                        $this -> log(0, $this -> StringTemplate -> WaitComplete);
+                                        $this -> update();
+                                    }
+                                }
                             }
                         }
                     }
@@ -375,6 +409,7 @@
                     if (!is_resource($instance -> process))
                         $this -> startInstance($token, $instance);
                 });
+                $this -> UpdatePending = false;
                 
 //          No build file found.
             } else {
