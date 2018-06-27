@@ -11,31 +11,39 @@
 //      Script config.
         public $Script = [
             
-/*      -   Where should SalienCheat be installed?
+/*      -   Where should SalienCheat be installed ?
             Default:    [ src/SalienCheat ] */
             'install' => 'src/SalienCheat',
             
-/*      -   What should the instances run?
+/*      -   What should the instances run ?
             Default:[ SalienCheat-master/cheat.php ]*/
             'run' => 'SalienCheat-master/cheat.php',
             
-/*      -   Where do we download SalienCheat?
+/*      -   Where do we download SalienCheat ?
             Default:[ https://github.com/SteamDatabase/SalienCheat/archive/master.zip ] */
             'url' => 'https://github.com/SteamDatabase/SalienCheat/archive/master.zip',
             
-/*      -   What should run the process?
+/*      -   What should run the process ?
             Default:   [ start /B php\php.exe ] for Windows, [ php ] for Unix */
             'daemon' => 'start /B php\php.exe',
             
-/*      -   What should be used to remove the old build?
+/*      -   What should be used to remove the old build ?
             Default:  [ del /Q ] for Windows, [ rm -r ] for Unix */
             'clean' => 'del /Q',
+            
+/*      -   Logging logic; Should we group data [1], prepend [2], or not log at all [0] ?
+            Default:    [ 2 ] */
+            'logLogic' => 2,
+            
+/*      -   What log lines should we ignore, if any [ Uses regexp ] ?
+            Default:         [ [] ] */
+            'logIgnoreList' => [],
             
 /*      -   Should we check the download file's last modified date? See: [ localFrequency ]
             Default:           [ true ] */
             'updateFromLocal' => true,
             
-/*      -   How often should the download file be checked?
+/*      -   How often should the download file be checked ?
             Default:          [ H * MM * SS ] 2 hours */
             'localFrequency' => 2 * 60 * 60,
             
@@ -56,8 +64,12 @@
             'updateWaitFor' => "Your Score"
         ];
         
-//      Instance stack.
-        public $Instances = ['0' => [0]];
+//      TextStyle presets.
+        public $TextStyle = [
+            "reset" => "\033[0m",
+            "grey_text" => "\033[90m",
+            "green_text" => "\033[32m"
+        ];
         
 //      String templates.
         public $StringTemplate = [
@@ -87,6 +99,9 @@
             "WaitingUpdate" => "Waiting for round to end to update ...". PHP_EOL,
             "WaitComplete" => "We've done our time.". PHP_EOL
         ];
+        
+//      Instance stack.
+        public $Instances = ['0' => [0]];
         
 //      Update Pending flag.
         public $UpdatePending = false;
@@ -211,7 +226,7 @@
             }
         }
         
-//      Terminal logging.
+//      Logging logic.
         public $lastLogGroup = 0;
         public $logGroups = [
             '0' => 'Master',
@@ -226,31 +241,80 @@
                 $template[1][] = $value;
             }
             
-//          Log grouping.
-            if ($this -> lastLogGroup == $token) {
-                $output = "";
-            } else {
-                $output = "+ ";
-                $logGroups = $this -> logGroups;
-                $instances = $this -> Instances;
-                if (@isset($logGroups -> $token)) {
-                    $output .= $logGroups -> $token;
+//          Style support.
+            $cs = $this -> getStyleSupport();
+            
+//          Check log logic.
+            if ($this -> Script -> logLogic !== 0) {
+                
+//              Initialize data.
+                $data = $cs? $this -> TextStyle -> reset: "";
+                
+//              Group data.
+                if ($this -> Script -> logLogic === 1) {
+                    if ($this -> lastLogGroup != $token) {
+                        $data .= ($cs? $this -> TextStyle -> grey_text: "")
+                            . "+ "
+                            . ($cs? $this -> TextStyle -> green_text: "")
+                            . $this -> getIdentifier($token). PHP_EOL;
+                        $this -> lastLogGroup = $token;
+                    }
+                    $data .= ($cs? $this -> TextStyle -> reset: "")
+                    .   $message;
+                
+//              Prepend data.
                 } else {
-                    $instance = $instances[$token];
-                    if (@$instance -> name != "") {
-                        $output .= $instance -> name;
-                    } else {
-                        $output .= "Instance ". substr($token, 0, 8);
+                    $lines = explode(PHP_EOL, $message);
+                    foreach ($lines as $line)
+                    if (trim($line)) {
+                        $data .= ($cs? $this -> TextStyle -> grey_text: "")
+                            . "[". date("H:i:s");
+                        $data .= "] "
+                            . ($cs? $this -> TextStyle -> green_text: "")
+                            . $this -> getIdentifier($token);
+                        $data .= ($cs? $this -> TextStyle -> reset: ""). ": "
+                            . $line;
+                    }
+                    $data .= PHP_EOL;
+                }
+                
+//              Replace matches.
+                $data = str_replace($template[0], $template[1], $data, $count);
+                
+//              Check data against ignore list.
+                if (count($this -> Script -> logIgnoreList) !== 0) {
+                    foreach ($this -> Script -> logIgnoreList as $ignore) {
+                        if (preg_match($ignore, $data))
+                            return;
                     }
                 }
-                $output .= "\r\n";
-                $this -> lastLogGroup = $token;
+                
+//              Output.
+                echo $data . ($cs? $this -> TextStyle -> reset: "");
             }
-//          Replace matches.
-            $output .= str_replace($template[0], $template[1], $message, $count);
-            
-//          Output.
-            echo $output;
+        }
+        
+//      Log identifier getter.
+        public function getIdentifier($token) {
+            $logGroups = $this -> logGroups;
+            $instances = $this -> Instances;
+            if (@isset($logGroups -> $token)) {
+                return $logGroups -> $token;
+            } else {
+                $instance = $instances[$token];
+                if (@$instance -> name != "") {
+                    return $instance -> name;
+                } else {
+                    return "Instance ". substr($token, 0, 8);
+                }
+            }
+        }
+        
+//      Styling support.
+        public function getStyleSupport() {
+            return (function_exists('sapi_windows_vt100_support') && sapi_windows_vt100_support(STDOUT))
+                || (function_exists('stream_isatty') && stream_isatty(STDOUT))
+                || (function_exists('posix_isatty') && posix_isatty(STDOUT));
         }
         
 //      Downloader.
