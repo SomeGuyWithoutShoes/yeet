@@ -118,6 +118,10 @@
 //      SalienCheat Initializer.
         public function initialize () {
             
+//          Color to Env.
+            if ($this -> getStyleSupport())
+                putenv("DISABLE_COLORS=0");
+            
 //          Parse the token file.
             if (file_exists("token.txt")) {
                 $tokens = fopen("token.txt", "r");
@@ -145,7 +149,7 @@
                 $this -> log(0, $this -> StringTemplate -> NoToken);
                 
 //              Ask the user for their main token.
-                $this -> log(0, "$ ");
+                echo "$ ";
                 $token = stream_get_line(STDIN, 1024, PHP_EOL);
                 
 //              Store the main token.
@@ -312,8 +316,11 @@
                             . $this -> getIdentifier($token);
                         $data .= ($cs? $this -> TextStyle -> reset: ""). ": "
                             . $line;
+                        
+//                      Check for ending EOL.
+                        if (!preg_match("/{PHP_EOL}$/", $data))
+                            $data .= PHP_EOL;
                     }
-                    $data .= PHP_EOL;
                 }
                 
 //              Replace matches.
@@ -403,10 +410,7 @@
                     'pipes' => [],
                     'descriptor' => [],
                     'workdir' => getcwd(),
-                    'environment' => array(
-                        'DISABLE_COLORS' => $this -> getStyleSupport()? "0": "1"
-                    ),
-                    
+                    'environment' => null,
                     'name' => $name,
                     'pendingRestart' => false
                 ];
@@ -432,7 +436,7 @@
             
 //          Start instance. [ Ignore proc_open Array to String notice ]
             $instance -> process = @proc_open(
-                "{$this -> Script -> daemon} \"{$this -> Script -> install}/{$this -> Script -> run}\" \"$token\"",
+                "{$this -> Script -> daemon} \"{$this -> Script -> install}/{$this -> Script -> run}\" $token",
                 $instance -> descriptors,
                 $instance -> pipes,
                 $instance -> workdir,
