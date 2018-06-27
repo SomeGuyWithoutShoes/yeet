@@ -126,6 +126,9 @@
                 $tokens = fopen("token.txt", "r");
                 while (($token = fgets($tokens, 2096)) !== false) {
                     
+//                  Trim token.
+                    trim($token);
+                    
 //                  Check if the token has a name.
                     if (preg_match("/:/", $token)) {
                         
