@@ -118,9 +118,6 @@
 //      SalienCheat Initializer.
         public function initialize () {
             
-//          Colors?
-            $_SERVER["DISABLE_COLORS"] = ($this -> getStyleSupport()? "0": "1");
-            
 //          Parse the token file.
             if (file_exists("token.txt")) {
                 $tokens = fopen("token.txt", "r");
@@ -406,7 +403,9 @@
                     'pipes' => [],
                     'descriptor' => [],
                     'workdir' => getcwd(),
-                    'environment' => $_SERVER,
+                    'environment' => array(
+                        'DISABLE_COLORS' => $this -> getStyleSupport()? "0": "1"
+                    ),
                     
                     'name' => $name,
                     'pendingRestart' => false
@@ -433,7 +432,7 @@
             
 //          Start instance. [ Ignore proc_open Array to String notice ]
             $instance -> process = @proc_open(
-                "{$this -> Script -> daemon} \"{$this -> Script -> install}/{$this -> Script -> run}\" $token",
+                "{$this -> Script -> daemon} \"{$this -> Script -> install}/{$this -> Script -> run}\" \"$token\"",
                 $instance -> descriptors,
                 $instance -> pipes,
                 $instance -> workdir,
