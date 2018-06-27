@@ -10,7 +10,11 @@
         
 //      Script config.
         public $Script = [
-            
+        
+/*      -   What delimeter should the argument parser use for arrays ?
+            Default:     [ | ] */
+            'argDelim' => '|',
+        
 /*      -   Where should SalienCheat be installed ?
             Default:    [ src/SalienCheat ] */
             'install' => 'src/SalienCheat',
@@ -39,6 +43,10 @@
             Default:         [ [] ] */
             'logIgnoreList' => [],
             
+/*      -   How often should the instance logic tick [ in ms ] ?
+            Default:                 [ 256 ] */
+            'instanceLogicTickrate' => 256,
+            
 /*      -   Should we check the download file's last modified date? See: [ localFrequency ]
             Default:           [ true ] */
             'updateFromLocal' => true,
@@ -60,7 +68,7 @@
             'updateDelayed' => true,
             
 /*      -   What should we wait for in STDOUT ?
-            Default:        [ Your Score ] */
+            Default:          [ Your Score ] */
             'updateWaitFor' => "Your Score"
         ];
         
@@ -79,12 +87,12 @@
             .   "To do so, add an extra \":NAME\" after the token, without the quotes.". PHP_EOL
             .   "For example: [ IVN31FDV:My Instance Name ]". PHP_EOL
             .   PHP_EOL . PHP_EOL,
-            "UpdateStart" => "Shutting down all instances for download of the latest build.". PHP_EOL,
+            "UpdateStart" => "Initializing a new update.". PHP_EOL,
             "UpdateCleanup" => "Cleaning up the old build.". PHP_EOL,
             "UpdateFailed" => "Couldn't perform update. Trying again in {retry}.". PHP_EOL,
             "UpdateDownload" => "Downloading the latest build.". PHP_EOL,
             "UpdateUnzip" => "Unpacking the latest build.". PHP_EOL,
-            "UpdateFinish" => "Update complete; Resuming.". PHP_EOL,
+            "UpdateFinish" => "Update complete.". PHP_EOL,
             "InstanceExists" => "Instance already exists, skipping.". PHP_EOL,
             "NewInstance" => "Instance initialized.". PHP_EOL,
             "StartInstance" => "Starting up.". PHP_EOL,
@@ -96,8 +104,9 @@
             "Initialize" => "Initializing SalienCheat.". PHP_EOL,
             "Initialized" => "SalienCheat has been initialized (Status: {status}).". PHP_EOL,
             "Construct" => "SalienCheat construction ready.". PHP_EOL,
-            "WaitingUpdate" => "Waiting for round to end to update ...". PHP_EOL,
-            "WaitComplete" => "We've done our time.". PHP_EOL
+            "WaitingUpdate" => "Waiting to update.". PHP_EOL,
+            "WaitingRestart" => "Waiting for round to end to restart.". PHP_EOL,
+            "WaitComplete" => "Restarting into new update.". PHP_EOL
         ];
         
 //      Instance stack.
@@ -109,40 +118,13 @@
 //      SalienCheat Initializer.
         public function initialize () {
             
-//          Get tokens for instances.
-            while (count($this -> Instances) <= 1) {
-                
-//              Parse the token file.
-                if (file_exists("token.txt")) {
-                    $tokens = fopen("token.txt", "r");
-                    while (($token = fgets($tokens, 2096)) !== false) {
-                        
-//                      Check if the token has a name.
-                        if (preg_match("/:/", $token)) {
-                            
-//                          Named token.
-                            $token = explode(":", $token);
-                            $this -> createInstance($token[0], $token[1]);
-                        } else {
-                            
-//                          Unnamed token.
-                            $this -> createInstance($token);
-                        }
-                    }
-                    fclose($tokens);
-                    
-//              Initialize first time run.
-                } else {
-                    $this -> log(0, $this -> StringTemplate -> NoToken);
-                    
-//                  Ask the user for their main token.
-                    $this -> log(0, "$ ");
-                    $token = stream_get_line(STDIN, 1024, PHP_EOL);
-                    
-//                  Store the main token.
-                    $tokens = fopen("token.txt", "x+");
-                    fwrite($tokens, $token);
-                    fclose($tokens);
+//          Colors?
+            $_SERVER["DISABLE_COLORS"] = ($this -> getStyleSupport()? "0": "1");
+            
+//          Parse the token file.
+            if (file_exists("token.txt")) {
+                $tokens = fopen("token.txt", "r");
+                while (($token = fgets($tokens, 2096)) !== false) {
                     
 //                  Check if the token has a name.
                     if (preg_match("/:/", $token)) {
@@ -156,17 +138,45 @@
                         $this -> createInstance($token);
                     }
                 }
+                fclose($tokens);
+                
+//          Initialize first time run.
+            } else {
+                $this -> log(0, $this -> StringTemplate -> NoToken);
+                
+//              Ask the user for their main token.
+                $this -> log(0, "$ ");
+                $token = stream_get_line(STDIN, 1024, PHP_EOL);
+                
+//              Store the main token.
+                $tokens = fopen("token.txt", "x+");
+                fwrite($tokens, $token);
+                fclose($tokens);
+                
+//              Check if the token has a name.
+                if (preg_match("/:/", $token)) {
+                    
+//                  Named token.
+                    $token = explode(":", $token);
+                    $this -> createInstance($token[0], $token[1]);
+                } else {
+                    
+//                  Unnamed token.
+                    $this -> createInstance($token);
+                }
             }
             
 //          Initial update check.
             if ($this -> fileAge("download") > $this -> Script -> localFrequency)
                 $this -> update();
             
+            
 //          Start up instances.
             $this -> forEach(function($token, &$instance) {
                 if (!is_resource($instance -> process))
                     $this -> startInstance($token, $instance);
             });
+            
             
 //          Process logic.
             $this -> log(0, $this -> StringTemplate -> Initialized, ['status' => 'OK!']);
@@ -178,11 +188,14 @@
                 
 //              Instance data.
                 $this -> forEach(function($token, &$instance) {
+                    
+//                  Check if running.
                     if (is_resource($instance -> process)) {
                         
 //                      Check if there's anything to read.
                         if ($this -> getSize($instance, 1)) {
-//                          Trim the read. [ Read 4096 so we don't run into other issues ]
+                            
+//                          Trim the read. [ 4096 to avoid vertical reading ]
                             $read = trim(fgets($instance -> pipes[1], 4096));
                             if ($read) {
                                 
@@ -191,37 +204,62 @@
                                     'message' => $read
                                 ]);
                                 
-//                              Check if STDOUT has update notification.
-                                if ($this -> Script -> updateFromSTDOUT)
-                                if (preg_match("/{$this -> Script -> updateNotification}/", $read)) {
-                                    if ($this -> Script -> updateDelayed) {
-                                        
-//                                      Flag for pending update.
-                                        if (!($this -> UpdatePending)) {
-                                            $this -> log(0, $this -> StringTemplate -> WaitingUpdate);
-                                            $this -> UpdatePending = true;
+//                              Check STDOUT.
+                                if ($this -> Script -> updateFromSTDOUT) {
+                                    
+//                                  Check for update notifications.
+                                    if (preg_match("/{$this -> Script -> updateNotification}/", $read)) {
+                                        if ($this -> Script -> updateDelayed) {
+                                            
+//                                          Flag for pending update.
+                                            if (!($this -> UpdatePending)) {
+                                                $this -> log(0, $this -> StringTemplate -> WaitingUpdate);
+                                                $this -> UpdatePending = true;
+                                            }
+                                        } else {
+                                            
+//                                          Update without delay.
+                                            $this -> update();
                                         }
-                                    } else {
+                                    
+//                                  Check if the round is complete.
+                                    } elseif (preg_match("/{$this -> Script -> updateWaitFor}/", $read)) {
                                         
-//                                      Immediate update.
-                                        $this -> update();
-                                    }
-                                }
-                                
-//                              Check if STDOUT has round end notification.
-                                if ($this -> Script -> updateDelayed)
-                                if (preg_match("/{$this -> Script -> updateWaitFor}/", $read)) {
-                                    if ($this -> UpdatePending) {
-                                        $this -> log(0, $this -> StringTemplate -> WaitComplete);
-                                        $this -> update();
+//                                      Start updating.
+                                        if ($this -> Script -> updateDelayed)
+                                        if ($this -> UpdatePending)
+                                            $this -> update();
+                                        
+//                                      Tell instance to restart.
+                                        if ($instance -> pendingRestart) {
+                                            $this -> log($token, $this -> StringTemplate -> WaitComplete);
+                                            $this -> stopInstance($token, $instance);
+                                        }
+                                    
+//                                  Check instances for restart in NoDelay situation.
+                                    } elseif (!($this -> Script -> updateDelayed) && $instance -> pendingRestart) {
+                                        
+//                                      Tell instance to restart.
+                                        $this -> log($token, $this -> StringTemplate -> WaitComplete);
+                                        $this -> stopInstance($token, $instance);
                                     }
                                 }
                             }
                         }
+                        
+//                  Instance is down.
+                    } else {
+                        
+//                      Check if update is finished.
+                        if (!($this -> UpdatePending)) {
+                            
+//                          Start instance up.
+                            $this -> startInstance($token, $instance);
+                        }
                     }
                 });
                 
-//              Add some usleep so we don't use 100% of CPU. [ Temporary fix, rewriting update ]
+//              Wait for a while before looping again.
                 usleep(256 * 1000);
             }
         }
@@ -263,7 +301,7 @@
                     .   $message;
                 
 //              Prepend data.
-                } else {
+                } if ($this -> Script -> logLogic === 2) {
                     $lines = explode(PHP_EOL, $message);
                     foreach ($lines as $line)
                     if (trim($line)) {
@@ -364,7 +402,11 @@
                     'process' => 0,
                     'pipes' => [],
                     'descriptor' => [],
-                    'name' => $name
+                    'workdir' => getcwd(),
+                    'environment' => $_SERVER,
+                    
+                    'name' => $name,
+                    'pendingRestart' => false
                 ];
                 $this -> log($token, $this -> StringTemplate -> NewInstance);
             } else {
@@ -386,11 +428,13 @@
                 2 => array("pipe", "a")
             ];
             
-//          Start instance.
-            $instance -> process = proc_open(
+//          Start instance. [ Ignore proc_open Array to String notice ]
+            $instance -> process = @proc_open(
                 "{$this -> Script -> daemon} \"{$this -> Script -> install}/{$this -> Script -> run}\" $token",
                 $instance -> descriptors,
-                $instance -> pipes
+                $instance -> pipes,
+                $instance -> workdir,
+                $instance -> environment
             );
             
 //          Set non-blocking.
@@ -403,6 +447,10 @@
                 
 //              Instance started.
                 $this -> log($token, $this -> StringTemplate -> StartInstance);
+                
+//              Reset instance restart flag.
+                if ($instance -> pendingRestart)
+                    $instance -> pendingRestart = false;
             } else {
                 
 //              Check if there's anything to read.
@@ -427,6 +475,7 @@
         
 //      Instance stopper.
         public function stopInstance ($token, &$instance) {
+            
 //          Check if instance is up.
             if (is_resource($instance -> process)) {
                 $this -> log($token, $this -> StringTemplate -> StopInstance);
@@ -436,6 +485,10 @@
                 fclose($instance -> pipes[1]);
                 fclose($instance -> pipes[2]);
                 $this -> kill($instance);
+                
+//              Reset instance restart flag.
+                if ($instance -> pendingRestart)
+                    $instance -> pendingRestart = false;
             }
         }
         
@@ -451,11 +504,12 @@
             
 //          Check for existing build.
             if (file_exists("download")) {
-                    
-//              Close down any running instances.
+                
+//              Flag running processes for restart.
                 $this -> log(0, $this -> StringTemplate -> UpdateStart);
                 $this -> forEach(function($token, &$instance) {
-                    $this -> stopInstance($token, $instance);
+                    if (!($instance -> pendingRestart))
+                        $instance -> pendingRestart = true;
                 });
                 
 //              Clean up the old build.
@@ -467,20 +521,18 @@
 //              Unpack latest build.
                 $this -> unzip("download", $this -> Script -> install);
                 
-//              Finish and restart processes.
+//              Finish and reset master flag.
                 $this -> log(0, $this -> StringTemplate -> UpdateFinish);
-                $this -> forEach(function($token, &$instance) {
-                    if (!is_resource($instance -> process))
-                        $this -> startInstance($token, $instance);
-                });
                 $this -> UpdatePending = false;
                 
 //          No build file found.
             } else {
                 
-//              Close down any running instances.
+//              Flag running processes for restart.
+                $this -> log(0, $this -> StringTemplate -> UpdateStart);
                 $this -> forEach(function($token, &$instance) {
-                    $this -> stopInstance($token, $instance);
+                    if (!($instance -> pendingRestart))
+                        $instance -> pendingRestart = true;
                 });
                 
 //              Clean up the old build.
@@ -536,6 +588,29 @@
         
 //      SalienCheat Process constructor.
         public function __construct () {
+            
+//          Register option handlers.
+            $optHandler = array(
+                'logIgnoreList' => function($v) {return explode("|",$v);},
+                'logLogic' => function($v) {return (int) $v;},
+                'instanceLogicTickrate' => function($v) {return (int) $v;},
+                'localFrequency' => function($v) {return (int) $v;},
+            );
+            
+//          Convert Script config keys to valid options.
+            $validOpts = [];
+            foreach (array_keys($this -> Script) as $validOption)
+                $validOpts[] = "{$validOption}::";
+            
+//          Parse provided options.
+            $options = getopt("", $validOpts);
+            foreach ($options as $key => $value) {
+                if (isset($optHandler[$key])) {
+                    $this -> Script[$key] = $optHandler[$key]($value);
+                } else {
+                    $this -> Script[$key] = $value;
+                }
+            }
             
 //          Convert associative arrays to objects.
             foreach ($this as &$key)
