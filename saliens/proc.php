@@ -127,19 +127,16 @@
                 $tokens = fopen("token.txt", "r");
                 while (($token = fgets($tokens, 2096)) !== false) {
                     
-//                  Trim token.
-                    trim($token);
-                    
 //                  Check if the token has a name.
                     if (preg_match("/:/", $token)) {
                         
 //                      Named token.
                         $token = explode(":", $token);
-                        $this -> createInstance($token[0], $token[1]);
+                        $this -> createInstance(trim($token[0]), trim($token[1]));
                     } else {
                         
 //                      Unnamed token.
-                        $this -> createInstance($token);
+                        $this -> createInstance(trim($token));
                     }
                 }
                 fclose($tokens);
