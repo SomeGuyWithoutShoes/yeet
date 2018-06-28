@@ -115,6 +115,9 @@
 //      Update Pending flag.
         public $UpdatePending = false;
         
+//      Restarting Instances.
+        public $RestartingInstances = 0;
+        
 //      SalienCheat Initializer.
         public function initialize () {
             
@@ -452,8 +455,10 @@
                 $this -> log($token, $this -> StringTemplate -> StartInstance);
                 
 //              Reset instance restart flag.
-                if ($instance -> pendingRestart)
+                if ($instance -> pendingRestart) {
                     $instance -> pendingRestart = false;
+                    $this -> RestartingInstances --;
+                }
             } else {
                 
 //              Check if there's anything to read.
@@ -490,8 +495,10 @@
                 $this -> kill($instance);
                 
 //              Reset instance restart flag.
-                if ($instance -> pendingRestart)
+                if ($instance -> pendingRestart) {
                     $instance -> pendingRestart = false;
+                    $this -> RestartingInstances --;
+                }
             }
         }
         
@@ -505,14 +512,25 @@
 //      SalienCheat updater.
         public function update () {
             
+//          Check no instance is pending for an update.
+            if ($this -> RestartingInstances !== 0) {
+                $this -> forEach(function($token, &$instance) {
+                    if ($instance -> pendingRestart)
+                        $this -> log($token, $this -> StringTemplate -> WaitingRestart);
+                });
+                return;
+            }
+            
 //          Check for existing build.
             if (file_exists("download")) {
                 
 //              Flag running processes for restart.
                 $this -> log(0, $this -> StringTemplate -> UpdateStart);
                 $this -> forEach(function($token, &$instance) {
-                    if (!($instance -> pendingRestart))
+                    if (!($instance -> pendingRestart)) {
                         $instance -> pendingRestart = true;
+                        $this -> RestartingInstances ++;
+                    }
                 });
                 
 //              Clean up the old build.
@@ -534,8 +552,10 @@
 //              Flag running processes for restart.
                 $this -> log(0, $this -> StringTemplate -> UpdateStart);
                 $this -> forEach(function($token, &$instance) {
-                    if (!($instance -> pendingRestart))
+                    if (!($instance -> pendingRestart)) {
                         $instance -> pendingRestart = true;
+                        $this -> RestartingInstances ++;
+                    }
                 });
                 
 //              Clean up the old build.
