@@ -222,12 +222,8 @@
             while (true) {
                 
 //              Check for updates.
-                if ($this -> Script -> updateFromLocal && ($this -> fileAge("download") > $this -> Script -> localFrequency)) {
-                    var_dump($this -> Script -> updateFromLocal);
-                    echo PHP_EOL;
-                    $this -> log(-1, "LOCAL UPDATE PROMPTED");
+                if ($this -> Script -> updateFromLocal && ($this -> fileAge("download") > $this -> Script -> localFrequency))
                     $this -> update();
-                }
                 
 //              Instance data.
                 $this -> forEach(function($token, &$instance) {
@@ -293,8 +289,8 @@
 //                  Instance is down.
                     } else {
                         
-//                      Check if update is finished.
-                        if (!($this -> UpdatePending)) {
+//                      Check if pending restart.
+                        if ($this -> instance -> pendingRestart) {
                             
 //                          Start instance up.
                             $this -> startInstance($token, $instance);
