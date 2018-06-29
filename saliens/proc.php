@@ -191,7 +191,7 @@
                 fclose($tokens);
                 
 //              Parse and create instance.
-                $this -> createInstance($token);
+                $this -> createInstance($TokenData);
                 
 //              Store Token Hash.
                 $this -> TokenHash = sha1(trim(file_get_contents("token.txt")));
