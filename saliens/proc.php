@@ -47,17 +47,52 @@
             Default:                 [ 256 ] */
             'instanceLogicTickrate' => 256,
             
+/*      -   What env flag is the COLOR toggle identified with ?
+            Default:         [ DISABLE_COLORS ] */
+            'colorEnvFlag' => 'DISABLE_COLORS',
+            
+/*
+        Disclaimer on Auto-Updates:
+            
+            Before you toggle on [ updateFromLocal ], or [ updateFromSTDOUT ],
+            Please keep in mind the dangers of automatic updates.
+            
+            While [ proc.php ] had them toggled on by default, because that was convenient for me,
+            it doesn't mean I should impose the risk that other users may not understand fully.
+            
+            So before you toggle them on, please, for your own sake, consider the risks.
+            
+            There's no saying when the source you're receiving updates from [ url ] could be
+            compromised. Be it either that the developer for some reason goes rogue,
+            or their account gets compromised for one reason or another,
+            the risk is always there, and it can be of any cause.
+            
+            [ proc.php ] itself doesn't update automatically; it merely updates
+            the script that it has been configured to run.
+            
+            By default that is SalienCheat [ github.com/SteamDatabase/SalienCheat ].
+            
+            Auto-updates can be toggled back on by editing [ proc.php ],
+            or by passing [ --updateFromLocal=true --updateFromSTDOUT=true ].
+            
+            If [ updateFromLocal ] has been disabled, the [ proc.php ] will still check the
+            existing download. This is required for the easy-installation [ proc.php ] uses.
+            Users may use this feature to update to the latest version of [ url ],
+            rather than rely on automatic updates while they're not present.
+            By deleting the existing update file, [ proc.php ] will download the latest build.
+*/
+            
 /*      -   Should we check the download file's last modified date? See: [ localFrequency ]
-            Default:           [ true ] */
-            'updateFromLocal' => true,
+            Default:           [ false ] */
+            'updateFromLocal' => false,
             
 /*      -   How often should the download file be checked ?
             Default:          [ H * MM * SS ] 2 hours */
             'localFrequency' => 2 * 60 * 60,
             
 /*      -   Should we update if STDOUT reads [ update available ] ? See: [ updateNotification ]
-            Default:            [ true ] */
-            'updateFromSTDOUT' => true,
+            Default:            [ false ] */
+            'updateFromSTDOUT' => false,
             
 /*      -   What should STDOUT be matched for ?
             Default:               [ Script has been updated on GitHub ] */
@@ -123,7 +158,7 @@
             
 //          Color to Env.
             if ($this -> getStyleSupport())
-                putenv("DISABLE_COLORS=0");
+                putenv("{$this -> Script -> colorEnvFlag}=0");
             
 //          Parse the token file.
             if (file_exists("token.txt")) {
@@ -170,8 +205,8 @@
                 }
             }
             
-//          Initial update check.
-            if ($this -> fileAge("download") > $this -> Script -> localFrequency)
+//          Initial install check.
+            if (!file_exists("download"))
                 $this -> update();
             
             
@@ -187,8 +222,12 @@
             while (true) {
                 
 //              Check for updates.
-                if ($this -> Script -> updateFromLocal && $this -> fileAge("download") > $this -> Script -> localFrequency)
+                if ($this -> Script -> updateFromLocal && ($this -> fileAge("download") > $this -> Script -> localFrequency)) {
+                    var_dump($this -> Script -> updateFromLocal);
+                    echo PHP_EOL;
+                    $this -> log(-1, "LOCAL UPDATE PROMPTED");
                     $this -> update();
+                }
                 
 //              Instance data.
                 $this -> forEach(function($token, &$instance) {
@@ -328,10 +367,9 @@
                 
 //              Check data against ignore list.
                 if (count($this -> Script -> logIgnoreList) !== 0) {
-                    foreach ($this -> Script -> logIgnoreList as $ignore) {
-                        if (preg_match($ignore, $data))
-                            return;
-                    }
+                    foreach ($this -> Script -> logIgnoreList as $ignore)
+                    if (preg_match($ignore, $data))
+                        return;
                 }
                 
 //              Output.
@@ -614,7 +652,12 @@
             
 //          Register option handlers.
             $optHandler = array(
-                'logIgnoreList' => function($v) {return explode("|",$v);},
+                'logIgnoreList' => function($v) {
+                    if (is_array($v)) return $v;
+                    else return explode($this -> Script['argDelim'], $v);
+                },
+                'updateFromLocal' => function($v) {return (bool) $v;},
+                'updateFromSTDOUT' => function($v) {return (bool) $v;},
                 'logLogic' => function($v) {return (int) $v;},
                 'instanceLogicTickrate' => function($v) {return (int) $v;},
                 'localFrequency' => function($v) {return (int) $v;},
@@ -628,11 +671,10 @@
 //          Parse provided options.
             $options = getopt("", $validOpts);
             foreach ($options as $key => $value) {
-                if (isset($optHandler[$key])) {
-                    $this -> Script[$key] = $optHandler[$key]($value);
-                } else {
-                    $this -> Script[$key] = $value;
-                }
+                $json = json_decode($value);
+                $value = !is_null($json)? $json: $value;
+                if (isset($optHandler[$key])) $this -> Script[$key] = $optHandler[$key]($value);
+                else $this -> Script[$key] = $value;
             }
             
 //          Convert associative arrays to objects.
