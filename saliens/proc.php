@@ -183,7 +183,7 @@
 //              Ask the user for their main token.
                 echo "$ ";
                 $TokenData = $this -> parseToken(stream_get_line(STDIN, 1024, PHP_EOL));
-                $token = "{$TokenData -> token}:{$TokenData -> token}";
+                $token = "{$TokenData -> token}:{$TokenData -> name}";
                 
 //              Store the main token.
                 $tokens = fopen("token.txt", "x+");
@@ -355,7 +355,7 @@
 //                  Grouped data.
                     case 1:
                         if ($this -> lastLogGroup != $id) {
-                            if ($cs) $data .= "{$style -> grey_test}+ {$style -> green_text}";
+                            if ($cs) $data .= "{$style -> grey_text}+ {$style -> green_text}";
                             else $data .= "+ ";
                             $data .= $this -> getIdentifier($id). PHP_EOL;
                             $this -> lastLogGroup = $id;
@@ -394,7 +394,7 @@
         
 //      Log identifier getter.
         public function getIdentifier($id) {
-            if (@isset($this -> logGroups -> $id)) return $this -> logGroups -> $id;
+            if (isset($this -> logGroups -> $id)) return $this -> logGroups -> $id;
             else return $id;
         }
         
@@ -460,7 +460,7 @@
                 
 //              Unnamed token.
                 $TokenData -> token = trim($token);
-                $TokenData -> name = trim("Instance {$token}");
+                $TokenData -> name = trim("Instance ". substr($token, 0, 8));
             }
             
             return $TokenData;
