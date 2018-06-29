@@ -234,6 +234,8 @@
 //                  Clear off removed instances.
                     foreach (array_diff($moldy, $freshlyBaked) as $token) {
                         $instance = $this -> Instances[$token];
+                        if ($instance -> pendingRestart && is_resource($instance -> process))
+                            $this -> RestartingInstances --;
                         $this -> stopInstance($instance);
                         unset($this -> Instances[$token]);
                     }
@@ -243,6 +245,7 @@
 //                  Update token hash.
                     $this -> TokenHash = $TokenHash;
                 }
+                
 //              Check for updates.
                 if ($this -> Script -> updateFromLocal && ($this -> fileAge("download") > $this -> Script -> localFrequency))
                     $this -> update();
@@ -480,6 +483,7 @@
                     'pendingRestart' => true
                 ];
                 $this -> log($TokenData -> name, $this -> StringTemplate -> NewInstance);
+                $this -> RestartingInstances ++;
             }
         }
         
@@ -570,13 +574,8 @@
         public function update () {
             
 //          Check no instance is pending for an update.
-            if ($this -> RestartingInstances !== 0) {
-                $this -> forEach(function($token, &$instance) {
-                    if ($instance -> pendingRestart)
-                        $this -> log($instance -> name, $this -> StringTemplate -> WaitingRestart);
-                });
+            if ($this -> RestartingInstances !== 0)
                 return;
-            }
             
 //          Check for existing build.
             if (file_exists("download")) {
