@@ -527,12 +527,6 @@
                 fclose($instance -> pipes[1]);
                 fclose($instance -> pipes[2]);
                 $this -> kill($instance);
-                
-//              Reset instance restart flag.
-                if ($instance -> pendingRestart) {
-                    $instance -> pendingRestart = false;
-                    $this -> RestartingInstances --;
-                }
             }
         }
         
