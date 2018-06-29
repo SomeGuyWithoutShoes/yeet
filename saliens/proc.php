@@ -128,7 +128,7 @@
             "UpdateDownload" => "Downloading the latest build.". PHP_EOL,
             "UpdateUnzip" => "Unpacking the latest build.". PHP_EOL,
             "UpdateFinish" => "Update complete.". PHP_EOL,
-            "InstanceExists" => "Instance already exists, skipping.". PHP_EOL,
+            "NewTokenHash" => "New hash noticed, applying changes.". PHP_EOL,
             "NewInstance" => "Instance initialized.". PHP_EOL,
             "StartInstance" => "Starting up.". PHP_EOL,
             "StopInstance" => "Shut down.". PHP_EOL,
@@ -153,6 +153,9 @@
 //      Restarting Instances.
         public $RestartingInstances = 0;
         
+//      Token hash.
+        public $TokenHash = "";
+        
 //      SalienCheat Initializer.
         public function initialize () {
             
@@ -163,21 +166,15 @@
 //          Parse the token file.
             if (file_exists("token.txt")) {
                 $tokens = fopen("token.txt", "r");
-                while (($token = fgets($tokens, 2096)) !== false) {
-                    
-//                  Check if the token has a name.
-                    if (preg_match("/:/", $token)) {
-                        
-//                      Named token.
-                        $token = explode(":", $token);
-                        $this -> createInstance(trim($token[0]), trim($token[1]));
-                    } else {
-                        
-//                      Unnamed token.
-                        $this -> createInstance(trim($token));
-                    }
-                }
+                
+//              Parse and create instances.
+                while (($token = fgets($tokens, 2096)) !== false)
+                    $this -> createInstance($this -> parseToken($token));
+                
                 fclose($tokens);
+                
+//              Store Token Hash.
+                $this -> TokenHash = sha1(trim(file_get_contents("token.txt")));
                 
 //          Initialize first time run.
             } else {
@@ -185,42 +182,67 @@
                 
 //              Ask the user for their main token.
                 echo "$ ";
-                $token = stream_get_line(STDIN, 1024, PHP_EOL);
+                $TokenData = $this -> parseToken(stream_get_line(STDIN, 1024, PHP_EOL));
+                $token = "{$TokenData -> token}:{$TokenData -> token}";
                 
 //              Store the main token.
                 $tokens = fopen("token.txt", "x+");
                 fwrite($tokens, $token);
                 fclose($tokens);
                 
-//              Check if the token has a name.
-                if (preg_match("/:/", $token)) {
-                    
-//                  Named token.
-                    $token = explode(":", $token);
-                    $this -> createInstance($token[0], $token[1]);
-                } else {
-                    
-//                  Unnamed token.
-                    $this -> createInstance($token);
-                }
+//              Parse and create instance.
+                $this -> createInstance($token);
+                
+//              Store Token Hash.
+                $this -> TokenHash = sha1(trim(file_get_contents("token.txt")));
             }
             
 //          Initial install check.
             if (!file_exists("download"))
                 $this -> update();
             
-            
-//          Start up instances.
-            $this -> forEach(function($token, &$instance) {
-                if (!is_resource($instance -> process))
-                    $this -> startInstance($token, $instance);
-            });
-            
-            
 //          Process logic.
             $this -> log(0, $this -> StringTemplate -> Initialized, ['status' => 'OK!']);
             while (true) {
                 
+//              Check for token edits.
+                $TokenHash = sha1(trim(file_get_contents("token.txt")));
+                if ($TokenHash != $this -> TokenHash) {
+                    
+//                  Initial log.
+                    $this -> log(0, $this -> StringTemplate -> NewTokenHash);
+                    
+//                  Found modified token hash.
+                    $tokens = fopen("token.txt", "r");
+                    
+//                  Parse the new tokens.
+                    $freshlyBaked = [];
+                    $moldy = [];
+                    
+//                  Store moldy.
+                    foreach ($this -> Instances as $token => $instance)
+                    if ($token !== 0)
+                        $moldy[] = $token;
+                    
+//                  Store fresh.
+                    while (($token = fgets($tokens, 2096)) !== false) {
+                        $TokenData = $this -> parseToken($token);
+                        $this -> createInstance($TokenData);
+                        $freshlyBaked[] = $TokenData -> token;
+                    }
+                    
+//                  Clear off removed instances.
+                    foreach (array_diff($moldy, $freshlyBaked) as $token) {
+                        $instance = $this -> Instances[$token];
+                        $this -> stopInstance($instance);
+                        unset($this -> Instances[$token]);
+                    }
+                    
+                    fclose($tokens);
+                    
+//                  Update token hash.
+                    $this -> TokenHash = $TokenHash;
+                }
 //              Check for updates.
                 if ($this -> Script -> updateFromLocal && ($this -> fileAge("download") > $this -> Script -> localFrequency))
                     $this -> update();
@@ -239,7 +261,7 @@
                             if ($read) {
                                 
 //                              Log the data.
-                                $this -> log($token, $this -> StringTemplate -> InstanceLog, [
+                                $this -> log($instance -> name, $this -> StringTemplate -> InstanceLog, [
                                     'message' => $read
                                 ]);
                                 
@@ -271,16 +293,16 @@
                                         
 //                                      Tell instance to restart.
                                         if ($instance -> pendingRestart) {
-                                            $this -> log($token, $this -> StringTemplate -> WaitComplete);
-                                            $this -> stopInstance($token, $instance);
+                                            $this -> log($instance -> name, $this -> StringTemplate -> WaitComplete);
+                                            $this -> stopInstance($instance);
                                         }
                                     
 //                                  Check instances for restart in NoDelay situation.
                                     } elseif (!($this -> Script -> updateDelayed) && $instance -> pendingRestart) {
                                         
 //                                      Tell instance to restart.
-                                        $this -> log($token, $this -> StringTemplate -> WaitComplete);
-                                        $this -> stopInstance($token, $instance);
+                                        $this -> log($instance -> name, $this -> StringTemplate -> WaitComplete);
+                                        $this -> stopInstance($instance);
                                     }
                                 }
                             }
@@ -309,7 +331,7 @@
             '0' => 'Master',
             '-1' => 'Debug'
         ];
-        public function log ($token, $message, $arguments = []) {
+        public function log ($id, $message, $arguments = []) {
             
 //          Compose template.
             $template = [[],[]];
@@ -320,42 +342,39 @@
             
 //          Style support.
             $cs = $this -> getStyleSupport();
+            $style = $this -> TextStyle;
             
 //          Check log logic.
             if ($this -> Script -> logLogic !== 0) {
                 
 //              Initialize data.
-                $data = $cs? $this -> TextStyle -> reset: "";
+                $data = $cs? $style->reset: "";
                 
-//              Group data.
-                if ($this -> Script -> logLogic === 1) {
-                    if ($this -> lastLogGroup != $token) {
-                        $data .= ($cs? $this -> TextStyle -> grey_text: "")
-                            . "+ "
-                            . ($cs? $this -> TextStyle -> green_text: "")
-                            . $this -> getIdentifier($token). PHP_EOL;
-                        $this -> lastLogGroup = $token;
-                    }
-                    $data .= ($cs? $this -> TextStyle -> reset: "")
-                    .   $message;
-                
-//              Prepend data.
-                } if ($this -> Script -> logLogic === 2) {
-                    $lines = explode(PHP_EOL, $message);
-                    foreach ($lines as $line)
-                    if (trim($line)) {
-                        $data .= ($cs? $this -> TextStyle -> grey_text: "")
-                            . "[". date("H:i:s");
-                        $data .= "] "
-                            . ($cs? $this -> TextStyle -> green_text: "")
-                            . $this -> getIdentifier($token);
-                        $data .= ($cs? $this -> TextStyle -> reset: ""). ": "
-                            . $line;
-                        
-//                      Check for ending EOL.
-                        if (!preg_match("/{PHP_EOL}$/", $data))
-                            $data .= PHP_EOL;
-                    }
+                switch ($this -> Script -> logLogic) {
+                    
+//                  Grouped data.
+                    case 1:
+                        if ($this -> lastLogGroup != $id) {
+                            if ($cs) $data .= "{$style -> grey_test}+ {$style -> green_text}";
+                            else $data .= "+ ";
+                            $data .= $this -> getIdentifier($id). PHP_EOL;
+                            $this -> lastLogGroup = $id;
+                        }
+                        $data .= ($cs? $this -> TextStyle -> reset: ""). $message;
+                        break;
+                    
+//                  Prepended data.
+                    case 2:
+                        $lines = explode(PHP_EOL, $message);
+                        foreach ($lines as $line)
+                        if (trim($line)) {
+                            if ($cs) $data .= "{$style -> grey_text}[". date("H:i:s") ."] {$style -> green_text}";
+                            $data .= $this -> getIdentifier($id);
+                            $data .= ($cs? $style -> reset: ""). ": ". $line;
+                            if (!preg_match("/{PHP_EOL}$/", $data))
+                                $data .= PHP_EOL;
+                        }
+                        break;
                 }
                 
 //              Replace matches.
@@ -374,19 +393,9 @@
         }
         
 //      Log identifier getter.
-        public function getIdentifier($token) {
-            $logGroups = $this -> logGroups;
-            $instances = $this -> Instances;
-            if (@isset($logGroups -> $token)) {
-                return $logGroups -> $token;
-            } else {
-                $instance = $instances[$token];
-                if (@$instance -> name != "") {
-                    return $instance -> name;
-                } else {
-                    return "Instance ". substr($token, 0, 8);
-                }
-            }
+        public function getIdentifier($id) {
+            if (@isset($this -> logGroups -> $id)) return $this -> logGroups -> $id;
+            else return $id;
         }
         
 //      Styling support.
@@ -436,21 +445,41 @@
                 system("{$this -> Script -> clean} \"{$this -> Script -> install}\"");
         }
         
+//      Token parser.
+        public function parseToken ($token) {
+            $TokenData = (object) [];
+            
+//          Check if the token has a name.
+            if (preg_match("/:/", $token)) {
+                
+//              Named token.
+                $token = explode(":", $token);
+                $TokenData -> token = trim($token[0]);
+                $TokenData -> name = trim($token[1]);
+            } else {
+                
+//              Unnamed token.
+                $TokenData -> token = trim($token);
+                $TokenData -> name = trim("Instance {$token}");
+            }
+            
+            return $TokenData;
+        }
+        
 //      Instance Object Creator.
-        public function createInstance ($token, $name = "") {
-            if (!isset($this -> Instances[$token])) {
-                $this -> Instances[$token] = (object) [
+        public function createInstance ($TokenData) {
+            if (!isset($this -> Instances[$TokenData -> token])) {
+                $this -> Instances[$TokenData -> token] = (object) [
                     'process' => 0,
                     'pipes' => [],
                     'descriptor' => [],
                     'workdir' => getcwd(),
                     'environment' => null,
-                    'name' => $name,
-                    'pendingRestart' => false
+                    
+                    'name' => $TokenData -> name,
+                    'pendingRestart' => true
                 ];
-                $this -> log($token, $this -> StringTemplate -> NewInstance);
-            } else {
-                $this -> log($token, $this -> StringTemplate -> InstanceExists);
+                $this -> log($TokenData -> name, $this -> StringTemplate -> NewInstance);
             }
         }
         
@@ -486,7 +515,7 @@
             if (is_resource($instance -> process)) {
                 
 //              Instance started.
-                $this -> log($token, $this -> StringTemplate -> StartInstance);
+                $this -> log($instance -> name, $this -> StringTemplate -> StartInstance);
                 
 //              Reset instance restart flag.
                 if ($instance -> pendingRestart) {
@@ -500,27 +529,27 @@
 //                  Trim the read.
                     $read = trim(fgets($instance -> pipes[2], 4096));
                     if ($error) {
-                        $this -> log($token, $this -> StringTemplate -> InstanceFailed, [
+                        $this -> log($instance -> name, $this -> StringTemplate -> InstanceFailed, [
                             'error' => $error
                         ]);
                     } else {
-                        $this -> log($token, $this -> StringTemplate -> InstanceFailed, [
+                        $this -> log($instance -> name, $this -> StringTemplate -> InstanceFailed, [
                             'error' => 'No clue what went wrong.'
                         ]);
                     }
                 }
                 
 //              Close the instance.
-                $this -> stopInstance($token, $instance);
+                $this -> stopInstance($instance);
             }
         }
         
 //      Instance stopper.
-        public function stopInstance ($token, &$instance) {
+        public function stopInstance (&$instance) {
             
 //          Check if instance is up.
             if (is_resource($instance -> process)) {
-                $this -> log($token, $this -> StringTemplate -> StopInstance);
+                $this -> log($instance -> name, $this -> StringTemplate -> StopInstance);
                 
 //              Close the instance.
                 fclose($instance -> pipes[0]);
@@ -544,7 +573,7 @@
             if ($this -> RestartingInstances !== 0) {
                 $this -> forEach(function($token, &$instance) {
                     if ($instance -> pendingRestart)
-                        $this -> log($token, $this -> StringTemplate -> WaitingRestart);
+                        $this -> log($instance -> name, $this -> StringTemplate -> WaitingRestart);
                 });
                 return;
             }
