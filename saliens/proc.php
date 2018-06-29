@@ -290,7 +290,7 @@
                     } else {
                         
 //                      Check if pending restart.
-                        if ($this -> instance -> pendingRestart) {
+                        if ($instance -> pendingRestart) {
                             
 //                          Start instance up.
                             $this -> startInstance($token, $instance);
