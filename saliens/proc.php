@@ -160,8 +160,12 @@
         public function initialize () {
             
 //          Color to Env.
-            if ($this -> getStyleSupport())
-                putenv("{$this -> Script -> colorEnvFlag}=0");
+            if (is_null(getenv($this -> Script -> colorEnvFlag))) {
+                $this -> log(0, "Toggle color support in pipes by script.");
+                putenv("{$this -> Script -> colorEnvFlag}=". ($this -> getStyleSupport()? "0": "1"));
+            } else {
+                $this -> log(0, "Toggle color support in pipes by env flag.");
+            }
             
 //          Parse the token file.
             if (file_exists("token.txt")) {
@@ -403,7 +407,8 @@
         
 //      Styling support.
         public function getStyleSupport() {
-            return (function_exists('sapi_windows_vt100_support') && sapi_windows_vt100_support(STDOUT))
+            return (getenv($this -> Script -> colorEnvFlag) === 0)
+                || (function_exists('sapi_windows_vt100_support') && sapi_windows_vt100_support(STDOUT))
                 || (function_exists('stream_isatty') && stream_isatty(STDOUT))
                 || (function_exists('posix_isatty') && posix_isatty(STDOUT));
         }
@@ -687,12 +692,18 @@
                 $validOpts[] = "{$validOption}::";
             
 //          Parse provided options.
-            $options = getopt("", $validOpts);
+            $options = getopt("e::", $validOpts);
             foreach ($options as $key => $value) {
-                $json = json_decode($value);
+                $json = json_decode(trim($value));
                 $value = !is_null($json)? $json: $value;
-                if (isset($optHandler[$key])) $this -> Script[$key] = $optHandler[$key]($value);
-                else $this -> Script[$key] = $value;
+                
+//              Check if key is env flag.
+                if ($key == "e") {
+                    putenv("$value");
+                } else {
+                    if (isset($optHandler[$key])) $this -> Script[$key] = $optHandler[$key]($value);
+                    else $this -> Script[$key] = $value;
+                }
             }
             
 //          Convert associative arrays to objects.
