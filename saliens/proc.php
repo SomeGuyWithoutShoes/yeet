@@ -160,12 +160,8 @@
         public function initialize () {
             
 //          Color to Env.
-            if (is_null(getenv($this -> Script -> colorEnvFlag))) {
-                $this -> log(0, "Toggle color support in pipes by script.");
+            if (!getenv($this -> Script -> colorEnvFlag))
                 putenv("{$this -> Script -> colorEnvFlag}=". ($this -> getStyleSupport()? "0": "1"));
-            } else {
-                $this -> log(0, "Toggle color support in pipes by env flag.");
-            }
             
 //          Parse the token file.
             if (file_exists("token.txt")) {
